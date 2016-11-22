@@ -53,6 +53,41 @@ public class DbModelSelector {
         return this;
     }
 
+    public DbModelSelector where(String columnName, String op, Object value) {
+        selector.where(columnName, op, value);
+        return this;
+    }
+
+    public DbModelSelector and(String columnName, String op, Object value) {
+        selector.and(columnName, op, value);
+        return this;
+    }
+
+    public DbModelSelector and(WhereBuilder where) {
+        selector.and(where);
+        return this;
+    }
+
+    public DbModelSelector or(String columnName, String op, Object value) {
+        selector.or(columnName, op, value);
+        return this;
+    }
+
+    public DbModelSelector or(WhereBuilder where) {
+        selector.or(where);
+        return this;
+    }
+
+    public DbModelSelector expr(String expr) {
+        selector.expr(expr);
+        return this;
+    }
+
+    public DbModelSelector expr(String columnName, String op, Object value) {
+        selector.expr(columnName, op, value);
+        return this;
+    }
+
     public DbModelSelector groupBy(String columnName) {
         this.groupByColumnName = columnName;
         return this;
@@ -110,12 +145,12 @@ public class DbModelSelector {
             }
         }
         result.append(" FROM ").append(selector.tableName);
-        if (selector.whereBuilder != null) {
+        if (selector.whereBuilder != null && selector.whereBuilder.getWhereItemSize() > 0) {
             result.append(" WHERE ").append(selector.whereBuilder.toString());
         }
         if (!TextUtils.isEmpty(groupByColumnName)) {
             result.append(" GROUP BY ").append(groupByColumnName);
-            if (having != null) {
+            if (having != null && having.getWhereItemSize() > 0) {
                 result.append(" HAVING ").append(having.toString());
             }
         }

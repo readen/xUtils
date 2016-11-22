@@ -18,7 +18,6 @@ package com.lidroid.xutils.util;
 import android.database.Cursor;
 
 import java.io.Closeable;
-import java.io.IOException;
 
 /**
  * Author: wyouflf
@@ -34,7 +33,7 @@ public class IOUtils {
         if (closeable != null) {
             try {
                 closeable.close();
-            } catch (IOException e) {
+            } catch (Throwable e) {
             }
         }
     }
@@ -43,7 +42,7 @@ public class IOUtils {
         if (cursor != null) {
             try {
                 cursor.close();
-            } catch (Exception e) {
+            } catch (Throwable e) {
             }
         }
     }

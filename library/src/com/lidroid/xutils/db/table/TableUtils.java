@@ -16,9 +16,9 @@
 package com.lidroid.xutils.db.table;
 
 import android.text.TextUtils;
-
 import com.lidroid.xutils.db.annotation.Id;
 import com.lidroid.xutils.db.annotation.Table;
+import com.lidroid.xutils.db.converter.ColumnConverterFactory;
 import com.lidroid.xutils.util.LogUtils;
 
 import java.lang.reflect.Field;
@@ -34,31 +34,35 @@ public class TableUtils {
     public static String getTableName(Class<?> entityType) {
         Table table = entityType.getAnnotation(Table.class);
         if (table == null || TextUtils.isEmpty(table.name())) {
-            //当没有注解的时候默认用类的名称作为表名,并把点（.）替换为下划线(_)
             return entityType.getName().replace('.', '_');
         }
         return table.name();
     }
 
+    public static String getExecAfterTableCreated(Class<?> entityType) {
+        Table table = entityType.getAnnotation(Table.class);
+        if (table != null) {
+            return table.execAfterTableCreated();
+        }
+        return null;
+    }
+
     /**
-     * key: entityType.canonicalName
+     * key: entityType.name
      */
     private static ConcurrentHashMap<String, HashMap<String, Column>> entityColumnsMap = new ConcurrentHashMap<String, HashMap<String, Column>>();
 
-    /**
-     * @param entityType
-     * @return key: columnName
-     */
-    public static synchronized HashMap<String, Column> getColumnMap(Class<?> entityType) {
+    /* package */
+    static synchronized HashMap<String, Column> getColumnMap(Class<?> entityType) {
 
-        if (entityColumnsMap.containsKey(entityType.getCanonicalName())) {
-            return entityColumnsMap.get(entityType.getCanonicalName());
+        if (entityColumnsMap.containsKey(entityType.getName())) {
+            return entityColumnsMap.get(entityType.getName());
         }
 
         HashMap<String, Column> columnMap = new HashMap<String, Column>();
         String primaryKeyFieldName = getPrimaryKeyFieldName(entityType);
         addColumns2Map(entityType, primaryKeyFieldName, columnMap);
-        entityColumnsMap.put(entityType.getCanonicalName(), columnMap);
+        entityColumnsMap.put(entityType.getName(), columnMap);
 
         return columnMap;
     }
@@ -71,7 +75,7 @@ public class TableUtils {
                 if (ColumnUtils.isTransient(field) || Modifier.isStatic(field.getModifiers())) {
                     continue;
                 }
-                if (ColumnUtils.isSimpleColumnType(field)) {
+                if (ColumnConverterFactory.isSupportColumnConverter(field.getType())) {
                     if (!field.getName().equals(primaryKeyFieldName)) {
                         Column column = new Column(entityType, field);
                         if (!columnMap.containsKey(column.getColumnName())) {
@@ -83,44 +87,43 @@ public class TableUtils {
                     if (!columnMap.containsKey(column.getColumnName())) {
                         columnMap.put(column.getColumnName(), column);
                     }
+                } else if (ColumnUtils.isFinder(field)) {
+                    Finder column = new Finder(entityType, field);
+                    if (!columnMap.containsKey(column.getColumnName())) {
+                        columnMap.put(column.getColumnName(), column);
+                    }
                 }
             }
 
             if (!Object.class.equals(entityType.getSuperclass())) {
                 addColumns2Map(entityType.getSuperclass(), primaryKeyFieldName, columnMap);
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             LogUtils.e(e.getMessage(), e);
         }
     }
 
-    public static Column getColumnOrId(Class<?> entityType, String columnName) {
+    /* package */
+    static Column getColumnOrId(Class<?> entityType, String columnName) {
         if (getPrimaryKeyColumnName(entityType).equals(columnName)) {
-            return com.lidroid.xutils.db.table.Table.get(entityType).getId();
-        }
-        return getColumnMap(entityType).get(columnName);
-    }
-
-    public static Column getColumnOrId(Class<?> entityType, Field columnField) {
-        String columnName = ColumnUtils.getColumnNameByField(columnField);
-        if (getPrimaryKeyColumnName(entityType).equals(columnName)) {
-            return com.lidroid.xutils.db.table.Table.get(entityType).getId();
+            return getId(entityType);
         }
         return getColumnMap(entityType).get(columnName);
     }
 
     /**
-     * key: entityType.canonicalName
+     * key: entityType.name
      */
     private static ConcurrentHashMap<String, com.lidroid.xutils.db.table.Id> entityIdMap = new ConcurrentHashMap<String, com.lidroid.xutils.db.table.Id>();
 
-    public static synchronized com.lidroid.xutils.db.table.Id getId(Class<?> entityType) {
+    /* package */
+    static synchronized com.lidroid.xutils.db.table.Id getId(Class<?> entityType) {
         if (Object.class.equals(entityType)) {
-            throw new RuntimeException("this model[" + entityType + "] has no any field");
+            throw new RuntimeException("field 'id' not found");
         }
 
-        if (entityIdMap.containsKey(entityType.getCanonicalName())) {
-            return entityIdMap.get(entityType.getCanonicalName());
+        if (entityIdMap.containsKey(entityType.getName())) {
+            return entityIdMap.get(entityType.getName());
         }
 
         Field primaryKeyField = null;
@@ -149,7 +152,7 @@ public class TableUtils {
         }
 
         com.lidroid.xutils.db.table.Id id = new com.lidroid.xutils.db.table.Id(entityType, primaryKeyField);
-        entityIdMap.put(entityType.getCanonicalName(), id);
+        entityIdMap.put(entityType.getName(), id);
         return id;
     }
 
@@ -161,22 +164,5 @@ public class TableUtils {
     private static String getPrimaryKeyColumnName(Class<?> entityType) {
         com.lidroid.xutils.db.table.Id id = getId(entityType);
         return id == null ? null : id.getColumnName();
-    }
-
-    public static Object getIdValue(Object entity) {
-        if (entity == null) return null;
-
-        try {
-            com.lidroid.xutils.db.table.Id id = getId(entity.getClass());
-            if (id == null) return null;
-            Object idValue = id.getColumnValue(entity);
-            if (idValue != null && !idValue.equals(0) && idValue.toString().length() > 0) {
-                return idValue;
-            } else {
-                return null;
-            }
-        } catch (Exception e) {
-            return null;
-        }
     }
 }

@@ -16,26 +16,50 @@
 package com.lidroid.xutils.db.table;
 
 import android.text.TextUtils;
-
-import com.lidroid.xutils.db.annotation.Check;
+import com.lidroid.xutils.db.annotation.*;
 import com.lidroid.xutils.db.annotation.Column;
+import com.lidroid.xutils.db.annotation.Finder;
 import com.lidroid.xutils.db.annotation.Foreign;
 import com.lidroid.xutils.db.annotation.Id;
-import com.lidroid.xutils.db.annotation.NotNull;
-import com.lidroid.xutils.db.annotation.Transient;
-import com.lidroid.xutils.db.annotation.Unique;
-import com.lidroid.xutils.db.sqlite.SQLiteLazyLoader;
+import com.lidroid.xutils.db.converter.ColumnConverter;
+import com.lidroid.xutils.db.converter.ColumnConverterFactory;
+import com.lidroid.xutils.db.sqlite.FinderLazyLoader;
+import com.lidroid.xutils.db.sqlite.ForeignLazyLoader;
 import com.lidroid.xutils.util.LogUtils;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
-import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 
 public class ColumnUtils {
 
     private ColumnUtils() {
+    }
+
+    private static final HashSet<String> DB_PRIMITIVE_TYPES = new HashSet<String>(14);
+
+    static {
+        DB_PRIMITIVE_TYPES.add(int.class.getName());
+        DB_PRIMITIVE_TYPES.add(long.class.getName());
+        DB_PRIMITIVE_TYPES.add(short.class.getName());
+        DB_PRIMITIVE_TYPES.add(byte.class.getName());
+        DB_PRIMITIVE_TYPES.add(float.class.getName());
+        DB_PRIMITIVE_TYPES.add(double.class.getName());
+
+        DB_PRIMITIVE_TYPES.add(Integer.class.getName());
+        DB_PRIMITIVE_TYPES.add(Long.class.getName());
+        DB_PRIMITIVE_TYPES.add(Short.class.getName());
+        DB_PRIMITIVE_TYPES.add(Byte.class.getName());
+        DB_PRIMITIVE_TYPES.add(Float.class.getName());
+        DB_PRIMITIVE_TYPES.add(Double.class.getName());
+        DB_PRIMITIVE_TYPES.add(String.class.getName());
+        DB_PRIMITIVE_TYPES.add(byte[].class.getName());
+    }
+
+    public static boolean isDbPrimitiveType(Class<?> fieldType) {
+        return DB_PRIMITIVE_TYPES.contains(fieldType.getName());
     }
 
     public static Method getColumnGetMethod(Class<?> entityType, Field field) {
@@ -97,6 +121,11 @@ public class ColumnUtils {
             return foreign.column();
         }
 
+        Finder finder = field.getAnnotation(Finder.class);
+        if (finder != null) {
+            return field.getName();
+        }
+
         return field.getName();
     }
 
@@ -110,10 +139,10 @@ public class ColumnUtils {
         return field.getName();
     }
 
-    public static Object getColumnDefaultValue(Field field) {
+    public static String getColumnDefaultValue(Field field) {
         Column column = field.getAnnotation(Column.class);
         if (column != null && !TextUtils.isEmpty(column.defaultValue())) {
-            return valueStr2SimpleTypeFieldValue(field.getType(), column.defaultValue());
+            return column.defaultValue();
         }
         return null;
     }
@@ -126,25 +155,8 @@ public class ColumnUtils {
         return field.getAnnotation(Foreign.class) != null;
     }
 
-    public static boolean isSimpleColumnType(Field field) {
-        Class<?> clazz = field.getType();
-        return isSimpleColumnType(clazz);
-    }
-
-    public static boolean isSimpleColumnType(Class columnType) {
-        return columnType.isPrimitive() ||
-                columnType.equals(String.class) ||
-                columnType.equals(Integer.class) ||
-                columnType.equals(Long.class) ||
-                columnType.equals(Date.class) ||
-                columnType.equals(java.sql.Date.class) ||
-                columnType.equals(Boolean.class) ||
-                columnType.equals(Float.class) ||
-                columnType.equals(Double.class) ||
-                columnType.equals(Byte.class) ||
-                columnType.equals(Short.class) ||
-                columnType.equals(CharSequence.class) ||
-                columnType.equals(Character.class);
+    public static boolean isFinder(Field field) {
+        return field.getAnnotation(Finder.class) != null;
     }
 
     public static boolean isUnique(Field field) {
@@ -168,87 +180,39 @@ public class ColumnUtils {
         }
     }
 
-    public static Object valueStr2SimpleTypeFieldValue(Class columnFieldType, final String valueStr) {
-        Object value = null;
-        if (isSimpleColumnType(columnFieldType) && valueStr != null) {
-            if (columnFieldType.equals(String.class) || columnFieldType.equals(CharSequence.class)) {
-                value = valueStr;
-            } else if (columnFieldType.equals(int.class) || columnFieldType.equals(Integer.class)) {
-                value = Integer.valueOf(valueStr);
-            } else if (columnFieldType.equals(long.class) || columnFieldType.equals(Long.class)) {
-                value = Long.valueOf(valueStr);
-            } else if (columnFieldType.equals(java.sql.Date.class)) {
-                value = new java.sql.Date(Long.valueOf(valueStr));
-            } else if (columnFieldType.equals(Date.class)) {
-                value = new Date(Long.valueOf(valueStr));
-            } else if (columnFieldType.equals(boolean.class) || columnFieldType.equals(Boolean.class)) {
-                value = ColumnUtils.convert2Boolean(valueStr);
-            } else if (columnFieldType.equals(float.class) || columnFieldType.equals(Float.class)) {
-                value = Float.valueOf(valueStr);
-            } else if (columnFieldType.equals(double.class) || columnFieldType.equals(Double.class)) {
-                value = Double.valueOf(valueStr);
-            } else if (columnFieldType.equals(byte.class) || columnFieldType.equals(Byte.class)) {
-                value = Byte.valueOf(valueStr);
-            } else if (columnFieldType.equals(short.class) || columnFieldType.equals(Short.class)) {
-                value = Short.valueOf(valueStr);
-            } else if (columnFieldType.equals(char.class) || columnFieldType.equals(Character.class)) {
-                value = valueStr.charAt(0);
-            }
-        }
-        return value;
-    }
-
     @SuppressWarnings("unchecked")
     public static Class<?> getForeignEntityType(com.lidroid.xutils.db.table.Foreign foreignColumn) {
-        Class<?> result = (Class<?>) foreignColumn.getColumnField().getType();
-        if (result.equals(SQLiteLazyLoader.class) || result.equals(List.class)) {
+        Class<?> result = foreignColumn.getColumnField().getType();
+        if (result.equals(ForeignLazyLoader.class) || result.equals(List.class)) {
             result = (Class<?>) ((ParameterizedType) foreignColumn.getColumnField().getGenericType()).getActualTypeArguments()[0];
         }
         return result;
     }
 
-    public static Boolean convert2Boolean(final Object value) {
-        if (value != null) {
-            String valueStr = value.toString();
-            return valueStr.length() == 1 ? "1".equals(valueStr) : Boolean.valueOf(valueStr);
+    @SuppressWarnings("unchecked")
+    public static Class<?> getFinderTargetEntityType(com.lidroid.xutils.db.table.Finder finderColumn) {
+        Class<?> result = finderColumn.getColumnField().getType();
+        if (result.equals(FinderLazyLoader.class) || result.equals(List.class)) {
+            result = (Class<?>) ((ParameterizedType) finderColumn.getColumnField().getGenericType()).getActualTypeArguments()[0];
         }
-        return false;
+        return result;
     }
 
+    @SuppressWarnings("unchecked")
     public static Object convert2DbColumnValueIfNeeded(final Object value) {
+        Object result = value;
         if (value != null) {
-            if (value instanceof Boolean) {
-                return ((Boolean) value) ? 1 : 0;
-            } else if (value instanceof java.sql.Date) {
-                return ((java.sql.Date) value).getTime();
-            } else if (value instanceof Date) {
-                return ((Date) value).getTime();
+            Class<?> valueType = value.getClass();
+            if (!isDbPrimitiveType(valueType)) {
+                ColumnConverter converter = ColumnConverterFactory.getColumnConverter(valueType);
+                if (converter != null) {
+                    result = converter.fieldValue2ColumnValue(value);
+                } else {
+                    result = value;
+                }
             }
         }
-        return value;
-    }
-
-    public static String fieldType2DbType(Class<?> fieldType) {
-        if (fieldType.equals(int.class) ||
-                fieldType.equals(Integer.class) ||
-                fieldType.equals(boolean.class) ||
-                fieldType.equals(Boolean.class) ||
-                fieldType.equals(Date.class) ||
-                fieldType.equals(java.sql.Date.class) ||
-                fieldType.equals(long.class) ||
-                fieldType.equals(Long.class) ||
-                fieldType.equals(byte.class) ||
-                fieldType.equals(Byte.class) ||
-                fieldType.equals(short.class) ||
-                fieldType.equals(Short.class)) {
-            return "INTEGER";
-        } else if (fieldType.equals(float.class) ||
-                fieldType.equals(Float.class) ||
-                fieldType.equals(double.class) ||
-                fieldType.equals(Double.class)) {
-            return "REAL";
-        }
-        return "TEXT";
+        return result;
     }
 
     private static boolean isStartWithIs(final String fieldName) {

@@ -15,7 +15,7 @@
 
 package com.lidroid.xutils.db.sqlite;
 
-import com.lidroid.xutils.db.table.Table;
+import com.lidroid.xutils.db.table.TableUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,7 +37,7 @@ public class Selector {
 
     private Selector(Class<?> entityType) {
         this.entityType = entityType;
-        this.tableName = Table.get(entityType).getTableName();
+        this.tableName = TableUtils.getTableName(entityType);
     }
 
     public static Selector from(Class<?> entityType) {
@@ -46,6 +46,47 @@ public class Selector {
 
     public Selector where(WhereBuilder whereBuilder) {
         this.whereBuilder = whereBuilder;
+        return this;
+    }
+
+    public Selector where(String columnName, String op, Object value) {
+        this.whereBuilder = WhereBuilder.b(columnName, op, value);
+        return this;
+    }
+
+    public Selector and(String columnName, String op, Object value) {
+        this.whereBuilder.and(columnName, op, value);
+        return this;
+    }
+
+    public Selector and(WhereBuilder where) {
+        this.whereBuilder.expr("AND (" + where.toString() + ")");
+        return this;
+    }
+
+    public Selector or(String columnName, String op, Object value) {
+        this.whereBuilder.or(columnName, op, value);
+        return this;
+    }
+
+    public Selector or(WhereBuilder where) {
+        this.whereBuilder.expr("OR (" + where.toString() + ")");
+        return this;
+    }
+
+    public Selector expr(String expr) {
+        if (this.whereBuilder == null) {
+            this.whereBuilder = WhereBuilder.b();
+        }
+        this.whereBuilder.expr(expr);
+        return this;
+    }
+
+    public Selector expr(String columnName, String op, Object value) {
+        if (this.whereBuilder == null) {
+            this.whereBuilder = WhereBuilder.b();
+        }
+        this.whereBuilder.expr(columnName, op, value);
         return this;
     }
 
@@ -89,7 +130,7 @@ public class Selector {
         result.append("SELECT ");
         result.append("*");
         result.append(" FROM ").append(tableName);
-        if (whereBuilder != null) {
+        if (whereBuilder != null && whereBuilder.getWhereItemSize() > 0) {
             result.append(" WHERE ").append(whereBuilder.toString());
         }
         if (orderByList != null) {

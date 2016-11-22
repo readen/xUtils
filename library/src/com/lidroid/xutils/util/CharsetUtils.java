@@ -17,8 +17,8 @@ package com.lidroid.xutils.util;
 
 import org.apache.http.protocol.HTTP;
 
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Created by wyouflf on 13-8-30.
@@ -32,15 +32,15 @@ public class CharsetUtils {
         try {
             String oldCharset = getEncoding(str, judgeCharsetLength);
             return new String(str.getBytes(oldCharset), charset);
-        } catch (IOException ex) {
+        } catch (Throwable ex) {
             LogUtils.w(ex);
             return str;
         }
     }
 
     public static String getEncoding(final String str, int judgeCharsetLength) {
-        String encode = CharsetUtils.defaultEncodingCharset;
-        for (String charset : supportCharset) {
+        String encode = CharsetUtils.DEFAULT_ENCODING_CHARSET;
+        for (String charset : SUPPORT_CHARSET) {
             if (isCharset(str, charset, judgeCharsetLength)) {
                 encode = charset;
                 break;
@@ -53,30 +53,32 @@ public class CharsetUtils {
         try {
             String temp = str.length() > judgeCharsetLength ? str.substring(0, judgeCharsetLength) : str;
             return temp.equals(new String(temp.getBytes(charset), charset));
-        } catch (UnsupportedEncodingException e) {
+        } catch (Throwable e) {
             return false;
         }
     }
 
-    public static String defaultEncodingCharset = HTTP.DEFAULT_CONTENT_CHARSET;
+    public static final String DEFAULT_ENCODING_CHARSET = HTTP.DEFAULT_CONTENT_CHARSET;
 
-    public static String[] supportCharset = new String[]{
-            "ISO-8859-1",
+    public static final List<String> SUPPORT_CHARSET = new ArrayList<String>();
 
-            "GB2312",
-            "GBK",
-            "GB18030",
+    static {
+        SUPPORT_CHARSET.add("ISO-8859-1");
 
-            "US-ASCII",
-            "ASCII",
+        SUPPORT_CHARSET.add("GB2312");
+        SUPPORT_CHARSET.add("GBK");
+        SUPPORT_CHARSET.add("GB18030");
 
-            "ISO-2022-KR",
+        SUPPORT_CHARSET.add("US-ASCII");
+        SUPPORT_CHARSET.add("ASCII");
 
-            "ISO-8859-2",
+        SUPPORT_CHARSET.add("ISO-2022-KR");
 
-            "ISO-2022-JP",
-            "ISO-2022-JP-2",
+        SUPPORT_CHARSET.add("ISO-8859-2");
 
-            "UTF-8"
-    };
+        SUPPORT_CHARSET.add("ISO-2022-JP");
+        SUPPORT_CHARSET.add("ISO-2022-JP-2");
+
+        SUPPORT_CHARSET.add("UTF-8");
+    }
 }

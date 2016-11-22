@@ -15,6 +15,10 @@
 
 package com.lidroid.xutils.db.table;
 
+import android.database.Cursor;
+import com.lidroid.xutils.db.converter.ColumnConverter;
+import com.lidroid.xutils.db.converter.ColumnConverterFactory;
+import com.lidroid.xutils.db.sqlite.ColumnDbType;
 import com.lidroid.xutils.util.LogUtils;
 
 import java.lang.reflect.Field;
@@ -22,42 +26,49 @@ import java.lang.reflect.Method;
 
 public class Column {
 
-    protected String columnName;
-    private Object defaultValue;
+    private Table table;
 
-    protected Method getMethod;
-    protected Method setMethod;
+    private int index = -1;
 
-    protected Field columnField;
+    protected final String columnName;
+    private final Object defaultValue;
 
-    protected Column(Class entityType, Field field) {
+    protected final Method getMethod;
+    protected final Method setMethod;
+
+    protected final Field columnField;
+    protected final ColumnConverter columnConverter;
+
+    /* package */ Column(Class<?> entityType, Field field) {
         this.columnField = field;
+        this.columnConverter = ColumnConverterFactory.getColumnConverter(field.getType());
         this.columnName = ColumnUtils.getColumnNameByField(field);
-        this.defaultValue = ColumnUtils.getColumnDefaultValue(field);
+        if (this.columnConverter != null) {
+            this.defaultValue = this.columnConverter.getFieldValue(ColumnUtils.getColumnDefaultValue(field));
+        } else {
+            this.defaultValue = null;
+        }
         this.getMethod = ColumnUtils.getColumnGetMethod(entityType, field);
         this.setMethod = ColumnUtils.getColumnSetMethod(entityType, field);
     }
 
     @SuppressWarnings("unchecked")
-    public void setValue2Entity(Object entity, String valueStr) {
-
-        Object value = null;
-        if (valueStr != null) {
-            Class columnType = columnField.getType();
-            value = ColumnUtils.valueStr2SimpleTypeFieldValue(columnType, valueStr);
-        }
+    public void setValue2Entity(Object entity, Cursor cursor, int index) {
+        this.index = index;
+        Object value = columnConverter.getFieldValue(cursor, index);
+        if (value == null && defaultValue == null) return;
 
         if (setMethod != null) {
             try {
                 setMethod.invoke(entity, value == null ? defaultValue : value);
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 LogUtils.e(e.getMessage(), e);
             }
         } else {
             try {
                 this.columnField.setAccessible(true);
                 this.columnField.set(entity, value == null ? defaultValue : value);
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 LogUtils.e(e.getMessage(), e);
             }
         }
@@ -65,24 +76,46 @@ public class Column {
 
     @SuppressWarnings("unchecked")
     public Object getColumnValue(Object entity) {
-        Object resultObj = null;
+        Object fieldValue = getFieldValue(entity);
+        return columnConverter.fieldValue2ColumnValue(fieldValue);
+    }
+
+    public Object getFieldValue(Object entity) {
+        Object fieldValue = null;
         if (entity != null) {
             if (getMethod != null) {
                 try {
-                    resultObj = getMethod.invoke(entity);
-                } catch (Exception e) {
+                    fieldValue = getMethod.invoke(entity);
+                } catch (Throwable e) {
                     LogUtils.e(e.getMessage(), e);
                 }
             } else {
                 try {
                     this.columnField.setAccessible(true);
-                    resultObj = this.columnField.get(entity);
-                } catch (Exception e) {
+                    fieldValue = this.columnField.get(entity);
+                } catch (Throwable e) {
                     LogUtils.e(e.getMessage(), e);
                 }
             }
         }
-        return ColumnUtils.convert2DbColumnValueIfNeeded(resultObj);
+        return fieldValue;
+    }
+
+    public Table getTable() {
+        return table;
+    }
+
+    /* package */ void setTable(Table table) {
+        this.table = table;
+    }
+
+    /**
+     * The value set in setValue2Entity(...)
+     *
+     * @return -1 or the index of this column.
+     */
+    public int getIndex() {
+        return index;
     }
 
     public String getColumnName() {
@@ -97,7 +130,11 @@ public class Column {
         return columnField;
     }
 
-    public String getColumnDbType() {
-        return ColumnUtils.fieldType2DbType(columnField.getType());
+    public ColumnConverter getColumnConverter() {
+        return columnConverter;
+    }
+
+    public ColumnDbType getColumnDbType() {
+        return columnConverter.getColumnDbType();
     }
 }

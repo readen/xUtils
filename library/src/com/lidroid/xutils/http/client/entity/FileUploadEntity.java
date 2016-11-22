@@ -15,16 +15,11 @@
 
 package com.lidroid.xutils.http.client.entity;
 
-import com.lidroid.xutils.http.client.callback.RequestCallBackHandler;
+import com.lidroid.xutils.http.callback.RequestCallBackHandler;
 import com.lidroid.xutils.util.IOUtils;
-
 import org.apache.http.entity.FileEntity;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 
 /**
  * Created with IntelliJ IDEA.
@@ -47,9 +42,9 @@ public class FileUploadEntity extends FileEntity implements UploadEntity {
         if (outStream == null) {
             throw new IllegalArgumentException("Output stream may not be null");
         }
-        InputStream inStream = null;
+        BufferedInputStream inStream = null;
         try {
-            inStream = new FileInputStream(this.file);
+            inStream = new BufferedInputStream(new FileInputStream(this.file));
             byte[] tmp = new byte[4096];
             int len;
             while ((len = inStream.read(tmp)) != -1) {
@@ -57,7 +52,7 @@ public class FileUploadEntity extends FileEntity implements UploadEntity {
                 uploadedSize += len;
                 if (callBackHandler != null) {
                     if (!callBackHandler.updateProgress(fileSize, uploadedSize, false)) {
-                        return;
+                        throw new InterruptedIOException("cancel");
                     }
                 }
             }

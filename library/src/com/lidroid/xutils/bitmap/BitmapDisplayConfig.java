@@ -15,58 +15,35 @@
 
 package com.lidroid.xutils.bitmap;
 
-import android.content.Context;
 import android.graphics.Bitmap;
-import android.util.DisplayMetrics;
+import android.graphics.drawable.Drawable;
 import android.view.animation.Animation;
-
-import com.lidroid.xutils.bitmap.callback.ImageLoadCallBack;
-import com.lidroid.xutils.bitmap.callback.SimpleImageLoadCallBack;
+import com.lidroid.xutils.bitmap.core.BitmapSize;
+import com.lidroid.xutils.bitmap.factory.BitmapFactory;
+import com.lidroid.xutils.task.Priority;
 
 public class BitmapDisplayConfig {
 
-    private int bitmapMaxWidth = 0;
-    private int bitmapMaxHeight = 0;
-
+    private BitmapSize bitmapMaxSize;
     private Animation animation;
+    private Drawable loadingDrawable;
+    private Drawable loadFailedDrawable;
+    private boolean autoRotation = false;
+    private boolean showOriginal = false;
+    private Bitmap.Config bitmapConfig = Bitmap.Config.RGB_565;
+    private BitmapFactory bitmapFactory;
 
-    private Bitmap loadingBitmap;
-    private Bitmap loadFailedBitmap;
+    private Priority priority;
 
-    private ImageLoadCallBack imageLoadCallBack;
-
-    private int compressQuality = 70;
-
-    private Context mContext;
-
-    public BitmapDisplayConfig(Context context) {
-        mContext = context;
+    public BitmapDisplayConfig() {
     }
 
-    public int getBitmapMaxWidth() {
-        if (bitmapMaxWidth == 0) {//图片的显示最大尺寸（为屏幕的大小,默认为屏幕宽度的1/2）
-            DisplayMetrics displayMetrics = mContext.getResources().getDisplayMetrics();
-            bitmapMaxWidth = (int) Math.floor(displayMetrics.widthPixels / 2);
-            bitmapMaxHeight = bitmapMaxHeight == 0 ? bitmapMaxWidth : bitmapMaxHeight;
-        }
-        return bitmapMaxWidth;
+    public BitmapSize getBitmapMaxSize() {
+        return bitmapMaxSize == null ? BitmapSize.ZERO : bitmapMaxSize;
     }
 
-    public void setBitmapMaxWidth(int bitmapMaxWidth) {
-        this.bitmapMaxWidth = bitmapMaxWidth;
-    }
-
-    public int getBitmapMaxHeight() {
-        if (bitmapMaxHeight == 0) {//图片的显示最大尺寸（为屏幕的大小,默认为屏幕宽度的1/2）
-            DisplayMetrics displayMetrics = mContext.getResources().getDisplayMetrics();
-            bitmapMaxHeight = (int) Math.floor(displayMetrics.widthPixels / 2);
-            bitmapMaxWidth = bitmapMaxWidth == 0 ? bitmapMaxHeight : bitmapMaxWidth;
-        }
-        return bitmapMaxHeight;
-    }
-
-    public void setBitmapMaxHeight(int bitmapMaxHeight) {
-        this.bitmapMaxHeight = bitmapMaxHeight;
+    public void setBitmapMaxSize(BitmapSize bitmapMaxSize) {
+        this.bitmapMaxSize = bitmapMaxSize;
     }
 
     public Animation getAnimation() {
@@ -77,39 +54,79 @@ public class BitmapDisplayConfig {
         this.animation = animation;
     }
 
-    public Bitmap getLoadingBitmap() {
-        return loadingBitmap;
+    public Drawable getLoadingDrawable() {
+        return loadingDrawable;
     }
 
-    public void setLoadingBitmap(Bitmap loadingBitmap) {
-        this.loadingBitmap = loadingBitmap;
+    public void setLoadingDrawable(Drawable loadingDrawable) {
+        this.loadingDrawable = loadingDrawable;
     }
 
-    public Bitmap getLoadFailedBitmap() {
-        return loadFailedBitmap;
+    public Drawable getLoadFailedDrawable() {
+        return loadFailedDrawable;
     }
 
-    public void setLoadFailedBitmap(Bitmap loadFailedBitmap) {
-        this.loadFailedBitmap = loadFailedBitmap;
+    public void setLoadFailedDrawable(Drawable loadFailedDrawable) {
+        this.loadFailedDrawable = loadFailedDrawable;
     }
 
-    public ImageLoadCallBack getImageLoadCallBack() {
-        if (imageLoadCallBack == null) {
-            imageLoadCallBack = new SimpleImageLoadCallBack();
-        }
-        return imageLoadCallBack;
+    public boolean isAutoRotation() {
+        return autoRotation;
     }
 
-    public void setImageLoadCallBack(ImageLoadCallBack imageLoadCallBack) {
-        this.imageLoadCallBack = imageLoadCallBack;
+    public void setAutoRotation(boolean autoRotation) {
+        this.autoRotation = autoRotation;
     }
 
-    public int getCompressQuality() {
-        return compressQuality;
+    public boolean isShowOriginal() {
+        return showOriginal;
     }
 
-    public void setCompressQuality(int compressQuality) {
-        this.compressQuality = compressQuality;
+    public void setShowOriginal(boolean showOriginal) {
+        this.showOriginal = showOriginal;
     }
 
+    public Bitmap.Config getBitmapConfig() {
+        return bitmapConfig;
+    }
+
+    public void setBitmapConfig(Bitmap.Config bitmapConfig) {
+        this.bitmapConfig = bitmapConfig;
+    }
+
+    public BitmapFactory getBitmapFactory() {
+        return bitmapFactory;
+    }
+
+    public void setBitmapFactory(BitmapFactory bitmapFactory) {
+        this.bitmapFactory = bitmapFactory;
+    }
+
+    public Priority getPriority() {
+        return priority;
+    }
+
+    public void setPriority(Priority priority) {
+        this.priority = priority;
+    }
+
+    @Override
+    public String toString() {
+        return (isShowOriginal() ? "" : bitmapMaxSize.toString()) +
+                (bitmapFactory == null ? "" : bitmapFactory.getClass().getName());
+    }
+
+    public BitmapDisplayConfig cloneNew() {
+        BitmapDisplayConfig config = new BitmapDisplayConfig();
+        config.bitmapMaxSize = this.bitmapMaxSize;
+        config.animation = this.animation;
+        config.loadingDrawable = this.loadingDrawable;
+        config.loadFailedDrawable = this.loadFailedDrawable;
+        config.autoRotation = this.autoRotation;
+        config.showOriginal = this.showOriginal;
+        config.bitmapConfig = this.bitmapConfig;
+        config.bitmapFactory = this.bitmapFactory;
+        config.priority = this.priority;
+        return config;
+    }
 }

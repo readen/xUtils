@@ -18,36 +18,23 @@ package com.lidroid.xutils;
 import android.app.Activity;
 import android.preference.Preference;
 import android.preference.PreferenceActivity;
+import android.preference.PreferenceGroup;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.CompoundButton;
-import android.widget.RadioGroup;
-import android.widget.SeekBar;
-import android.widget.TabHost;
-
 import com.lidroid.xutils.util.LogUtils;
-import com.lidroid.xutils.util.core.DoubleKeyValueMap;
-import com.lidroid.xutils.view.ViewCommonEventListener;
+import com.lidroid.xutils.view.EventListenerManager;
+import com.lidroid.xutils.view.ResLoader;
+import com.lidroid.xutils.view.ViewFinder;
+import com.lidroid.xutils.view.ViewInjectInfo;
+import com.lidroid.xutils.view.annotation.ContentView;
+import com.lidroid.xutils.view.annotation.PreferenceInject;
+import com.lidroid.xutils.view.annotation.ResInject;
 import com.lidroid.xutils.view.annotation.ViewInject;
-import com.lidroid.xutils.view.annotation.event.OnCheckedChange;
-import com.lidroid.xutils.view.annotation.event.OnClick;
-import com.lidroid.xutils.view.annotation.event.OnItemClick;
-import com.lidroid.xutils.view.annotation.event.OnItemLongClick;
-import com.lidroid.xutils.view.annotation.event.OnItemSelected;
-import com.lidroid.xutils.view.annotation.event.OnLongClick;
-import com.lidroid.xutils.view.annotation.event.OnNothingSelected;
-import com.lidroid.xutils.view.annotation.event.OnPreferenceChange;
-import com.lidroid.xutils.view.annotation.event.OnProgressChanged;
-import com.lidroid.xutils.view.annotation.event.OnScrollChanged;
-import com.lidroid.xutils.view.annotation.event.OnStartTrackingTouch;
-import com.lidroid.xutils.view.annotation.event.OnStopTrackingTouch;
-import com.lidroid.xutils.view.annotation.event.OnTabChange;
+import com.lidroid.xutils.view.annotation.event.EventBase;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class ViewUtils {
 
@@ -55,176 +42,130 @@ public class ViewUtils {
     }
 
     public static void inject(View view) {
-        injectObject(view, new Finder(view));
+        injectObject(view, new ViewFinder(view));
     }
 
     public static void inject(Activity activity) {
-        injectObject(activity, new Finder(activity));
+        injectObject(activity, new ViewFinder(activity));
     }
 
     public static void inject(PreferenceActivity preferenceActivity) {
-        injectObject(preferenceActivity, new Finder(preferenceActivity));
+        injectObject(preferenceActivity, new ViewFinder(preferenceActivity));
     }
 
     public static void inject(Object handler, View view) {
-        injectObject(handler, new Finder(view));
+        injectObject(handler, new ViewFinder(view));
     }
 
     public static void inject(Object handler, Activity activity) {
-        injectObject(handler, new Finder(activity));
+        injectObject(handler, new ViewFinder(activity));
+    }
+
+    public static void inject(Object handler, PreferenceGroup preferenceGroup) {
+        injectObject(handler, new ViewFinder(preferenceGroup));
     }
 
     public static void inject(Object handler, PreferenceActivity preferenceActivity) {
-        injectObject(handler, new Finder(preferenceActivity));
+        injectObject(handler, new ViewFinder(preferenceActivity));
     }
 
-
     @SuppressWarnings("ConstantConditions")
-    private static void injectObject(Object handler, Finder finder) {
+    private static void injectObject(Object handler, ViewFinder finder) {
+
+        Class<?> handlerType = handler.getClass();
+
+        // inject ContentView
+        ContentView contentView = handlerType.getAnnotation(ContentView.class);
+        if (contentView != null) {
+            try {
+                Method setContentViewMethod = handlerType.getMethod("setContentView", int.class);
+                setContentViewMethod.invoke(handler, contentView.value());
+            } catch (Throwable e) {
+                LogUtils.e(e.getMessage(), e);
+            }
+        }
 
         // inject view
-        Field[] fields = handler.getClass().getDeclaredFields();
+        Field[] fields = handlerType.getDeclaredFields();
         if (fields != null && fields.length > 0) {
             for (Field field : fields) {
                 ViewInject viewInject = field.getAnnotation(ViewInject.class);
                 if (viewInject != null) {
                     try {
-                        field.setAccessible(true);
-                        field.set(handler, finder.findViewById(viewInject.value()));
-                    } catch (Exception e) {
+                        View view = finder.findViewById(viewInject.value(), viewInject.parentId());
+                        if (view != null) {
+                            field.setAccessible(true);
+                            field.set(handler, view);
+                        }
+                    } catch (Throwable e) {
                         LogUtils.e(e.getMessage(), e);
                     }
-                }
-            }
-        }
-
-        // inject event
-        Method[] methods = handler.getClass().getDeclaredMethods();
-        if (methods != null && methods.length > 0) {
-            String eventName = OnClick.class.getCanonicalName();
-            String prefix = eventName.substring(0, eventName.lastIndexOf('.'));
-            DoubleKeyValueMap<Object, Annotation, Method> id_annotation_method_map = new DoubleKeyValueMap<Object, Annotation, Method>();
-            for (Method method : methods) {
-                Annotation[] annotations = method.getDeclaredAnnotations();
-                if (annotations != null && annotations.length > 0) {
-                    for (Annotation annotation : annotations) {
-                        if (annotation.annotationType().getCanonicalName().startsWith(prefix)) {
+                } else {
+                    ResInject resInject = field.getAnnotation(ResInject.class);
+                    if (resInject != null) {
+                        try {
+                            Object res = ResLoader.loadRes(
+                                    resInject.type(), finder.getContext(), resInject.id());
+                            if (res != null) {
+                                field.setAccessible(true);
+                                field.set(handler, res);
+                            }
+                        } catch (Throwable e) {
+                            LogUtils.e(e.getMessage(), e);
+                        }
+                    } else {
+                        PreferenceInject preferenceInject = field.getAnnotation(PreferenceInject.class);
+                        if (preferenceInject != null) {
                             try {
-                                // ProGuard：-keep class * extends java.lang.annotation.Annotation { *; }
-                                Method valueMethod = annotation.annotationType().getDeclaredMethod("value");
-                                Object value = valueMethod.invoke(annotation);
-                                if (value.getClass().isArray()) {
-                                    int len = Array.getLength(value);
-                                    for (int i = 0; i < len; i++) {
-                                        id_annotation_method_map.put(Array.get(value, i), annotation, method);
-                                    }
-                                } else {
-                                    id_annotation_method_map.put(value, annotation, method);
+                                Preference preference = finder.findPreference(preferenceInject.value());
+                                if (preference != null) {
+                                    field.setAccessible(true);
+                                    field.set(handler, preference);
                                 }
-                            } catch (Exception e) {
+                            } catch (Throwable e) {
                                 LogUtils.e(e.getMessage(), e);
                             }
                         }
                     }
                 }
             }
-            setEventListener(handler, finder, id_annotation_method_map);
         }
-    }
 
-    @SuppressWarnings("ConstantConditions")
-    private static void setEventListener(Object handler, Finder finder, DoubleKeyValueMap<Object, Annotation, Method> id_annotation_method_map) {
-        for (Object id : id_annotation_method_map.getFirstKeys()) {
-            ConcurrentHashMap<Annotation, Method> annotation_method_map = id_annotation_method_map.get(id);
-            for (Annotation annotation : annotation_method_map.keySet()) {
-                try {
-                    Method method = annotation_method_map.get(annotation);
-                    if (annotation.annotationType().equals(OnClick.class)) {
-                        View view = finder.findViewById((Integer) id);
-                        view.setOnClickListener(new ViewCommonEventListener(handler).click(method));
-                    } else if (annotation.annotationType().equals(OnLongClick.class)) {
-                        View view = finder.findViewById((Integer) id);
-                        view.setOnLongClickListener(new ViewCommonEventListener(handler).longClick(method));
-                    } else if (annotation.annotationType().equals(OnItemClick.class)) {
-                        View view = finder.findViewById((Integer) id);
-                        ((AdapterView) view).setOnItemClickListener(new ViewCommonEventListener(handler).itemClick(method));
-                    } else if (annotation.annotationType().equals(OnItemLongClick.class)) {
-                        View view = finder.findViewById((Integer) id);
-                        ((AdapterView) view).setOnItemLongClickListener(new ViewCommonEventListener(handler).itemLongClick(method));
-                    } else if (annotation.annotationType().equals(OnCheckedChange.class)) {
-                        View view = finder.findViewById((Integer) id);
-                        if (view instanceof RadioGroup) {
-                            ((RadioGroup) view).setOnCheckedChangeListener(new ViewCommonEventListener(handler).radioGroupCheckedChanged(method));
-                        } else if (view instanceof CompoundButton) {
-                            ((CompoundButton) view).setOnCheckedChangeListener(new ViewCommonEventListener(handler).compoundButtonCheckedChanged(method));
-                        }
-                    } else if (annotation.annotationType().equals(OnPreferenceChange.class)) {
-                        Preference preference = finder.findPreference(id.toString());
-                        preference.setOnPreferenceChangeListener(new ViewCommonEventListener(handler).preferenceChange(method));
-                    } else if (annotation.annotationType().equals(OnTabChange.class)) {
-                        View view = finder.findViewById((Integer) id);
-                        ((TabHost) view).setOnTabChangedListener(new ViewCommonEventListener(handler).tabChanged(method));
-                    } else if (annotation.annotationType().equals(OnScrollChanged.class)) {
-                        View view = finder.findViewById((Integer) id);
-                        view.getViewTreeObserver().addOnScrollChangedListener(new ViewCommonEventListener(handler).scrollChanged(method));
-                    } else if (annotation.annotationType().equals(OnItemSelected.class)) {
-                        View view = finder.findViewById((Integer) id);
-                        ViewCommonEventListener listener = new ViewCommonEventListener(handler);
-                        ConcurrentHashMap<Annotation, Method> a_m_map = id_annotation_method_map.get(id);
-                        for (Annotation a : a_m_map.keySet()) {
-                            if (a.annotationType().equals(OnItemSelected.class)) {
-                                listener.selected(a_m_map.get(a));
-                            } else if (a.annotationType().equals(OnNothingSelected.class)) {
-                                listener.noSelected(a_m_map.get(a));
+        // inject event
+        Method[] methods = handlerType.getDeclaredMethods();
+        if (methods != null && methods.length > 0) {
+            for (Method method : methods) {
+                Annotation[] annotations = method.getDeclaredAnnotations();
+                if (annotations != null && annotations.length > 0) {
+                    for (Annotation annotation : annotations) {
+                        Class<?> annType = annotation.annotationType();
+                        if (annType.getAnnotation(EventBase.class) != null) {
+                            method.setAccessible(true);
+                            try {
+                                // ProGuard：-keep class * extends java.lang.annotation.Annotation { *; }
+                                Method valueMethod = annType.getDeclaredMethod("value");
+                                Method parentIdMethod = null;
+                                try {
+                                    parentIdMethod = annType.getDeclaredMethod("parentId");
+                                } catch (Throwable e) {
+                                }
+                                Object values = valueMethod.invoke(annotation);
+                                Object parentIds = parentIdMethod == null ? null : parentIdMethod.invoke(annotation);
+                                int parentIdsLen = parentIds == null ? 0 : Array.getLength(parentIds);
+                                int len = Array.getLength(values);
+                                for (int i = 0; i < len; i++) {
+                                    ViewInjectInfo info = new ViewInjectInfo();
+                                    info.value = Array.get(values, i);
+                                    info.parentId = parentIdsLen > i ? (Integer) Array.get(parentIds, i) : 0;
+                                    EventListenerManager.addEventMethod(finder, info, annotation, handler, method);
+                                }
+                            } catch (Throwable e) {
+                                LogUtils.e(e.getMessage(), e);
                             }
                         }
-                        ((AdapterView) view).setOnItemSelectedListener(listener);
-                    } else if (annotation.annotationType().equals(OnProgressChanged.class)) {
-                        View view = finder.findViewById((Integer) id);
-                        ViewCommonEventListener listener = new ViewCommonEventListener(handler);
-                        ConcurrentHashMap<Annotation, Method> a_m_map = id_annotation_method_map.get(id);
-                        for (Annotation a : a_m_map.keySet()) {
-                            if (a.annotationType().equals(OnProgressChanged.class)) {
-                                listener.progressChanged(a_m_map.get(a));
-                            } else if (a.annotationType().equals(OnStartTrackingTouch.class)) {
-                                listener.startTrackingTouch(a_m_map.get(a));
-                            } else if (a.annotationType().equals(OnStopTrackingTouch.class)) {
-                                listener.stopTrackingTouch(a_m_map.get(a));
-                            }
-                        }
-                        ((SeekBar) view).setOnSeekBarChangeListener(listener);
                     }
-                } catch (Exception e) {
-                    LogUtils.e(e.getMessage(), e);
                 }
             }
-        }
-    }
-
-    private static class Finder {
-        private View view;
-        private Activity activity;
-        private PreferenceActivity preferenceActivity;
-
-        public Finder(View view) {
-            this.view = view;
-        }
-
-        public Finder(Activity activity) {
-            this.activity = activity;
-        }
-
-        private Finder(PreferenceActivity preferenceActivity) {
-            this.preferenceActivity = preferenceActivity;
-            this.activity = preferenceActivity;
-        }
-
-        public View findViewById(int id) {
-            return activity == null ? view.findViewById(id) : activity.findViewById(id);
-        }
-
-        public Preference findPreference(CharSequence key) {
-            return preferenceActivity.findPreference(key);
         }
     }
 
